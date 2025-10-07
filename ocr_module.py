@@ -9,6 +9,7 @@ warnings.filterwarnings("ignore")
 try:
     import pytesseract
     _PYTESSERACT_AVAILABLE = True
+    pytesseract.pytesseract.tesseract_cmd = "/usr/bin/tesseract"  # Fix path for Render/Linux
 except Exception:
     _PYTESSERACT_AVAILABLE = False
 
@@ -136,7 +137,7 @@ def analyze_image(path, show=False):
     roi = img[y:y + h, x:x + w]
     enhanced, th = preprocess_roi(roi)
 
-    # Only Tesseract OCR
+    # Tesseract OCR
     results = ocr_tesseract_image(th)
 
     joined = " | ".join([r[1] for r in results])
@@ -145,7 +146,7 @@ def analyze_image(path, show=False):
     label = detect_label(joined, value)
     value = correct_numeric(value, label)
 
-    # Annotate original image
+    # Annotate image
     annotated = img.copy()
     for (bbox, text, _) in results:
         try:
