@@ -3,29 +3,14 @@ import cv2
 import numpy as np
 import re
 import tempfile
-import os
 import warnings
 warnings.filterwarnings("ignore")
-
-try:
-    import easyocr
-    _EASYOCR_AVAILABLE = True
-except Exception:
-    _EASYOCR_AVAILABLE = False
 
 try:
     import pytesseract
     _PYTESSERACT_AVAILABLE = True
 except Exception:
     _PYTESSERACT_AVAILABLE = False
-
-_EASY_READER = None
-def _get_easy_reader():
-    global _EASY_READER
-    if not _EASY_READER and _EASYOCR_AVAILABLE:
-        # gpu=False (CPU). If you have GPU-configured torch, set gpu=True
-        _EASY_READER = easyocr.Reader(['en'], gpu=False)
-    return _EASY_READER
 
 def detect_display_bbox(img):
     """Find bright/green-ish display region; fallback to centered crop."""
@@ -63,16 +48,6 @@ def preprocess_roi(roi, upscale=2):
                                cv2.THRESH_BINARY_INV, 31, 9)
     return enhanced, th
 
-def ocr_easyocr_image(roi):
-    reader = _get_easy_reader()
-    if reader is None:
-        return []
-    # easyocr expects RGB
-    rgb = cv2.cvtColor(roi, cv2.COLOR_BGR2RGB)
-    out = reader.readtext(rgb, detail=1, paragraph=False)
-    # out entries: [ (bbox, text, prob), ... ]
-    return out
-
 def ocr_tesseract_image(img_gray):
     if not _PYTESSERACT_AVAILABLE:
         return []
@@ -80,8 +55,7 @@ def ocr_tesseract_image(img_gray):
     out = []
     for i in range(len(data['text'])):
         txt = data['text'][i].strip()
-        if not txt:
-            continue
+        if not txt: continue
         x, y, w, h = data['left'][i], data['top'][i], data['width'][i], data['height'][i]
         conf_val = data['conf'][i]
         try:
@@ -116,8 +90,7 @@ def parse_numeric(tokens, joined_raw):
     if m:
         return float(m.group())
     nums = [clean_token(t) for t, _ in tokens if re.search(r'\d', t)]
-    if not nums:
-        return None
+    if not nums: return None
     joined = ''.join(nums)
     if '.' not in joined and len(joined) >= 4:
         val = float(joined[:-2] + '.' + joined[-2:])
@@ -149,10 +122,8 @@ def detect_label(joined, value):
     if any(k in text for k in ['he pressure', 'pressure', 'psi']):
         return 'Pressure'
     if value is not None:
-        if value <= 100:
-            return 'Level'
-        elif value > 100:
-            return 'Pressure'
+        if value <= 100: return 'Level'
+        elif value > 100: return 'Pressure'
     return None
 
 def analyze_image(path, show=False):
@@ -165,22 +136,8 @@ def analyze_image(path, show=False):
     roi = img[y:y + h, x:x + w]
     enhanced, th = preprocess_roi(roi)
 
-    # Try EasyOCR first, fallback to pytesseract
-    results = []
-    if _EASYOCR_AVAILABLE:
-        try:
-            eout = ocr_easyocr_image(roi)
-            # easyocr returns bbox as list of 4 points
-            for bbox, txt, prob in eout:
-                results.append((bbox, txt, prob))
-        except Exception:
-            results = []
-    if not results and _PYTESSERACT_AVAILABLE:
-        try:
-            tout = ocr_tesseract_image(th)
-            results = tout
-        except Exception:
-            results = []
+    # Only Tesseract OCR
+    results = ocr_tesseract_image(th)
 
     joined = " | ".join([r[1] for r in results])
     tokens = reconstruct_from_bboxes(results)
@@ -188,19 +145,18 @@ def analyze_image(path, show=False):
     label = detect_label(joined, value)
     value = correct_numeric(value, label)
 
-    # Annotate on original image (for display)
+    # Annotate original image
     annotated = img.copy()
     for (bbox, text, _) in results:
         try:
             tl = (int(bbox[0][0]), int(bbox[0][1]))
             br = (int(bbox[2][0]), int(bbox[2][1]))
         except:
-            # fallback
             tl = (0, 0); br = (0, 0)
         cv2.rectangle(annotated, tl, br, (0, 128, 255), 2)
-        cv2.putText(annotated, str(text), (tl[0], max(10, tl[1] - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 128, 255), 2)
+        cv2.putText(annotated, str(text), (tl[0], max(10, tl[1] - 6)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 128, 255), 2)
 
-    # Save annotated image to temp path
     tf = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
     annotated_path = tf.name
     tf.close()

@@ -2,11 +2,10 @@
 import streamlit as st
 import sqlite3
 import tempfile
-import os
 from datetime import datetime
 from ocr_module import analyze_image
 
-DB_PATH = "readings.db"
+DB_PATH = "readings.db"  # keep relative path
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -27,8 +26,10 @@ def init_db():
 def save_to_db(category, filepath, label, value, raw_text, annotated_path):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("INSERT INTO readings (category, filepath, label, value, raw_text, annotated_path, timestamp) VALUES (?,?,?,?,?,?,?)",
-              (category, filepath, label, value, raw_text, annotated_path, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    c.execute(
+        "INSERT INTO readings (category, filepath, label, value, raw_text, annotated_path, timestamp) VALUES (?,?,?,?,?,?,?)",
+        (category, filepath, label, value, raw_text, annotated_path, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    )
     conn.commit()
     conn.close()
 
@@ -43,11 +44,7 @@ st.write("Upload an image or capture using your camera (if available).")
 uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
 camera_file = st.camera_input("Take a picture")
 
-file_obj = None
-if uploaded_file is not None:
-    file_obj = uploaded_file
-elif camera_file is not None:
-    file_obj = camera_file
+file_obj = uploaded_file or camera_file
 
 if file_obj is not None:
     # Save to temp file
@@ -64,9 +61,7 @@ if file_obj is not None:
                 if res:
                     st.success(f"Detected: {res['label']} → {res['value']}")
                     st.write("Raw OCR text:", res['raw_text'])
-                    # Show annotated image
                     st.image(res['annotated_path'], caption="Annotated", use_column_width=True)
-                    # Save to DB
                     save_to_db(category, tmp_path, res['label'], res['value'], res['raw_text'], res['annotated_path'])
                     st.info("Saved to database.")
                 else:
